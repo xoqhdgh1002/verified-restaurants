@@ -153,6 +153,32 @@ export default function RestaurantDetailPage() {
               </div>
             )}
 
+            {/* 검증되지 않은 레스토랑 안내 */}
+            {restaurant.verification_status === 'pending' && (
+              <div className="mb-6">
+                <div className="bg-yellow-50 border-l-4 border-yellow-500 p-6 rounded-r-lg">
+                  <h4 className="font-bold text-yellow-800 mb-2">⏳ 검증 대기중입니다</h4>
+                  <p className="text-yellow-700 text-sm leading-relaxed">
+                    이 레스토랑은 아직 운영자의 검증을 받지 않았습니다.
+                    현재 {restaurant.request_count}명이 검증을 요청했으며,
+                    요청이 많을수록 빠르게 검증될 수 있습니다.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {restaurant.verification_status === 'rejected' && (
+              <div className="mb-6">
+                <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-r-lg">
+                  <h4 className="font-bold text-red-800 mb-2">❌ 검증이 거부되었습니다</h4>
+                  <p className="text-red-700 text-sm leading-relaxed">
+                    이 레스토랑은 운영자 검증 과정에서 거부되었습니다.
+                    {restaurant.verified_comment && ' 자세한 사유는 위의 코멘트를 참고해주세요.'}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* 추가 정보 */}
             <div className="grid md:grid-cols-2 gap-6 mb-6">
               {restaurant.phone && (
