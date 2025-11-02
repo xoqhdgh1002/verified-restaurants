@@ -1,0 +1,175 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { Restaurant } from '@/lib/supabase/types';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  vegan: '비건',
+  'low-sodium': '저염',
+  'gluten-free': '글루텐프리',
+  keto: '키토',
+  organic: '유기농',
+};
+
+export default function RestaurantsPage() {
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchRestaurants();
+  }, [selectedCategories]);
+
+  const fetchRestaurants = async () => {
+    setLoading(true);
+    try {
+      const categoryParam = selectedCategories.join(',');
+      const url = `/api/restaurants${categoryParam ? `?categories=${categoryParam}` : ''}`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (response.ok) {
+        setRestaurants(data.restaurants || []);
+      }
+    } catch (error) {
+      console.error('Error fetching restaurants:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleCategory = (category: string) => {
+    setSelectedCategories((prev) =>
+      prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category]
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
+      <div className="max-w-6xl mx-auto px-4 py-16">
+        {/* 헤더 */}
+        <div className="mb-8">
+          <Link href="/" className="text-green-600 hover:text-green-700 mb-4 inline-block">
+            ← 홈으로 돌아가기
+          </Link>
+          <h1 className="text-4xl font-bold text-green-800 mb-4">검증된 식당 목록</h1>
+          <p className="text-gray-600">운영자가 직접 확인한 신뢰할 수 있는 건강 식당</p>
+        </div>
+
+        {/* 필터 */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+          <h3 className="font-bold text-gray-800 mb-4">카테고리 필터</h3>
+          <div className="flex flex-wrap gap-3">
+            {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => toggleCategory(key)}
+                className={`px-4 py-2 rounded-full font-medium transition-colors ${
+                  selectedCategories.includes(key)
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {selectedCategories.length > 0 && (
+            <button
+              onClick={() => setSelectedCategories([])}
+              className="mt-4 text-sm text-gray-500 hover:text-gray-700"
+            >
+              필터 초기화
+            </button>
+          )}
+        </div>
+
+        {/* 식당 리스트 */}
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">로딩 중...</p>
+          </div>
+        ) : restaurants.length === 0 ? (
+          <div className="bg-white rounded-2xl shadow-lg p-12 text-center">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">
+              아직 검증된 식당이 없습니다
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {selectedCategories.length > 0
+                ? '선택한 카테고리에 해당하는 식당이 없습니다'
+                : '검증 요청을 해주시면 우선순위에 따라 확인해드립니다'}
+            </p>
+            <Link
+              href="/request"
+              className="inline-block bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700"
+            >
+              식당 검증 요청하기
+            </Link>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {restaurants.map((restaurant) => (
+              <Link
+                key={restaurant.id}
+                href={`/restaurants/${restaurant.id}`}
+                className="bg-white rounded-2xl shadow-lg p-6 hover:shadow-xl transition-shadow"
+              >
+                <div className="mb-4">
+                  <h3 className="text-xl font-bold text-gray-800 mb-2">{restaurant.name}</h3>
+                  <p className="text-sm text-gray-600">{restaurant.address}</p>
+                </div>
+
+                {/* 카테고리 태그 */}
+                {restaurant.category && restaurant.category.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {restaurant.category.map((cat) => (
+                      <span
+                        key={cat}
+                        className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full"
+                      >
+                        {CATEGORY_LABELS[cat] || cat}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* 검증 코멘트 */}
+                {restaurant.verified_comment && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
+                    <p className="text-sm text-green-800 line-clamp-3">
+                      {restaurant.verified_comment}
+                    </p>
+                  </div>
+                )}
+
+                {/* 요청 수 */}
+                <div className="text-xs text-gray-500">
+                  검증 요청: {restaurant.request_count}명
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {/* 하단 CTA */}
+        {restaurants.length > 0 && (
+          <div className="mt-12 text-center">
+            <p className="text-gray-600 mb-4">원하는 식당이 없나요?</p>
+            <Link
+              href="/request"
+              className="inline-block bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700"
+            >
+              식당 검증 요청하기
+            </Link>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
