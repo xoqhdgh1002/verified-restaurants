@@ -127,16 +127,26 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=여기에_anon_key_입력
 2. 검증한 식당 행을 찾아 클릭
 3. 다음 필드를 수정:
 
-| 필드                  | 값 예시                                                                 |
-|-----------------------|------------------------------------------------------------------------|
-| `verification_status` | `verified` (검증 완료) 또는 `rejected` (거절됨)                       |
-| `verified_at`         | 현재 시간 (예: `2024-01-15 10:30:00`)                                 |
-| `verified_comment`    | "✅ 사장님 확인 완료. 100% 식물성 재료만 사용하며, 유기농 인증 받은 식재료를 사용합니다." |
-| `category`            | `{vegan, organic}` (배열 형식으로 입력)                                |
-| `phone`               | `02-1234-5678` (선택)                                                  |
-| `website`             | `https://example.com` (선택)                                           |
+| 필드                  | 값 예시                                                                 | 필수 여부 |
+|-----------------------|------------------------------------------------------------------------|---------|
+| `verification_status` | `verified` (검증 완료) 또는 `rejected` (거절됨)                       | ✅ 필수 |
+| `verified_at`         | 현재 시간 (예: `2025-01-03 10:30:00`)                                 | ✅ 필수 |
+| `verified_comment`    | "✅ 사장님 확인 완료. 100% 식물성 재료만 사용하며, 유기농 인증 받은 식재료를 사용합니다." | ✅ 필수 |
+| `category`            | `{vegan, organic}` (배열 형식으로 입력)                                | ✅ 필수 |
+| `phone`               | `02-1234-5678`                                                  | 선택 |
+| `website`             | `https://example.com`                                           | 선택 |
+| `latitude`            | `37.4979` (위도, 소수점 7자리)                                    | 🗺️ 지도 표시용 (권장) |
+| `longitude`           | `127.0276` (경도, 소수점 7자리)                                   | 🗺️ 지도 표시용 (권장) |
+| `road_address`        | `서울특별시 강남구 테헤란로 123`                                   | 선택 |
+| `opening_hours`       | `월-금 11:00-21:00, 주말 12:00-20:00`                            | 선택 |
+| `cuisine`             | `korean`, `burger`, `coffee_shop` 등                             | 선택 |
 
 4. 하단 `Save` 버튼 클릭
+
+**💡 위치 정보 (위도/경도) 찾는 방법:**
+- [Google Maps](https://maps.google.com)에서 식당 검색 → 주소 클릭 → URL의 `@37.4979,127.0276` 부분 확인
+- [Naver 지도](https://map.naver.com)에서 식당 검색 → 주소 복사 → 좌표 변환기 사용
+- 위도/경도가 있어야 지도 뷰에 식당이 표시됩니다!
 
 ### 5-2. 검증 코멘트 작성 팁
 
@@ -225,7 +235,7 @@ SELECT increment_request_count('식당_ID');
 ### 검증 대기 중인 식당 목록 (요청 수 많은 순)
 
 ```sql
-SELECT name, address, request_count
+SELECT name, address, request_count, latitude, longitude
 FROM restaurants
 WHERE verification_status = 'pending'
 ORDER BY request_count DESC;
@@ -251,6 +261,28 @@ WHERE verification_status = 'verified'
 GROUP BY cat;
 ```
 
+### 위치 정보가 없는 검증 완료 식당 찾기
+
+```sql
+SELECT name, address, verification_status
+FROM restaurants
+WHERE verification_status = 'verified'
+  AND (latitude IS NULL OR longitude IS NULL);
+```
+
+**⚠️ 이 식당들은 지도 뷰에 표시되지 않으므로 위치 정보를 추가해야 합니다!**
+
+### 식당 위치 일괄 업데이트 (예시)
+
+```sql
+UPDATE restaurants
+SET
+  latitude = 37.4979,
+  longitude = 127.0276,
+  road_address = '서울특별시 강남구 테헤란로 123'
+WHERE name = '식당 이름';
+```
+
 ---
 
 ## 9. 효율적인 1인 운영 팁
@@ -258,7 +290,29 @@ GROUP BY cat;
 1. **주 1회 정기 검증**: 매주 월요일에 요청 수 상위 5개 식당 검증
 2. **템플릿 사용**: 검증 코멘트 템플릿을 미리 준비 (복사-붙여넣기)
 3. **우선순위 기준**: `request_count ≥ 30`인 식당을 최우선으로
-4. **자동화 고려**: 나중에 사용자가 증가하면 관리자 페이지 직접 개발
+4. **위치 정보 필수 입력**: 검증 완료 시 위도/경도를 꼭 입력하여 지도에 표시되도록 할 것
+5. **지도 활용**: 같은 지역 식당들을 한 번에 방문 검증 (동선 최적화)
+6. **자동화 고려**: 나중에 사용자가 증가하면 관리자 페이지 직접 개발
+
+### 🗺️ 지도 기반 효율적인 검증 워크플로우
+
+1. **Supabase Dashboard에서 검증 대기 식당 확인**
+   ```sql
+   SELECT name, address, latitude, longitude, request_count
+   FROM restaurants
+   WHERE verification_status = 'pending'
+   ORDER BY request_count DESC
+   LIMIT 10;
+   ```
+
+2. **지도 뷰에서 지역별 클러스터링 확인**
+   - `/restaurants` 페이지 → 지도 뷰 전환
+   - 검증 대기중 식당만 필터링
+   - 같은 지역에 모여있는 식당들을 파악
+
+3. **한 번 방문에 여러 식당 검증**
+   - 예: 강남역 인근 5개 식당을 한 오후에 모두 방문
+   - 이동 시간 절약 + 효율성 극대화
 
 ---
 
@@ -271,4 +325,63 @@ GROUP BY cat;
 ---
 
 **작성일**: 2024-01-15
-**마지막 업데이트**: 2024-01-15
+**마지막 업데이트**: 2025-01-03
+
+---
+
+## 11. 🆕 새로운 기능 가이드 (v1.1)
+
+### 지도 뷰 활용하기
+
+사용자가 `/restaurants` 페이지에서 "🗺️ 지도" 버튼을 클릭하면:
+- 모든 식당이 지도에 마커로 표시됩니다
+- 마커는 검증 상태에 따라 색상이 다릅니다:
+  - 🟢 초록색: 검증 완료
+  - 🟡 노란색: 검증 대기중
+  - 🔴 빨간색: 거절됨
+- 마커 클릭 시 식당 정보 팝업 표시
+
+**⚠️ 중요**: 식당이 지도에 표시되려면 `latitude`와 `longitude` 필드가 필수입니다!
+
+### 검색 기능
+
+사용자가 식당 이름으로 검색할 수 있습니다:
+- DB 검색은 부분 일치(LIKE) 방식
+- 대소문자 구분 없음
+- 검색어가 식당 이름에 포함되면 결과에 표시
+
+### 거리 기반 정렬
+
+사용자가 "📍 내 위치" 버튼을 클릭하면:
+- 브라우저 위치 권한 요청
+- 허용 시 현재 위치 기반으로 거리 계산
+- "거리순" 정렬 옵션 활성화
+
+**관리자 팁**: 검증 시 위도/경도를 정확히 입력해야 거리 계산이 정확합니다!
+
+### 데이터 임포트 (OpenStreetMap 등)
+
+DB 스키마에 `external_id` 필드가 추가되어 외부 데이터 소스 통합이 가능합니다:
+```sql
+INSERT INTO restaurants (
+  external_id,
+  name,
+  address,
+  latitude,
+  longitude,
+  category,
+  original_category,
+  verification_status
+) VALUES (
+  'osm_node_123456',
+  '식당 이름',
+  '서울시 강남구...',
+  37.4979,
+  127.0276,
+  ARRAY['vegan'],
+  'restaurant',
+  'pending'
+);
+```
+
+이를 통해 대량의 식당 데이터를 한 번에 임포트하고 검증 대상으로 관리할 수 있습니다.
