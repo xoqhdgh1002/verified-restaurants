@@ -4,9 +4,9 @@ import { supabase } from '@/lib/supabase/client';
 // 특정 식당 상세 정보 조회
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   try {
     const { data, error } = await supabase

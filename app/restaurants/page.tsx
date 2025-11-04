@@ -2,7 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { Restaurant } from '@/lib/supabase/types';
+import { useGeolocation, calculateDistance } from '@/lib/hooks/useGeolocation';
+
+// 지도 컴포넌트는 클라이언트 사이드에서만 로드
+const RestaurantMap = dynamic(
+  () => import('@/app/components/map/RestaurantMap'),
+  { ssr: false }
+);
 
 const CATEGORY_LABELS: Record<string, string> = {
   vegan: '비건',
@@ -31,6 +39,11 @@ export default function RestaurantsPage() {
   const [verificationStatus, setVerificationStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchInput, setSearchInput] = useState<string>('');
+  const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | undefined>();
+  const [sortBy, setSortBy] = useState<'name' | 'distance' | 'requests'>('requests');
+
+  const { coords, loading: geoLoading, error: geoError, getCurrentPosition } = useGeolocation();
 
   useEffect(() => {
     fetchRestaurants();
@@ -79,6 +92,36 @@ export default function RestaurantsPage() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearchQuery(searchInput);
+  };
+
+  // 거리 계산 및 정렬
+  const sortedRestaurants = [...restaurants].map((restaurant) => {
+    if (coords && restaurant.latitude && restaurant.longitude) {
+      const distance = calculateDistance(
+        coords.latitude,
+        coords.longitude,
+        restaurant.latitude,
+        restaurant.longitude
+      );
+      return { ...restaurant, calculatedDistance: distance };
+    }
+    return { ...restaurant, calculatedDistance: null };
+  }).sort((a, b) => {
+    if (sortBy === 'distance' && a.calculatedDistance !== null && b.calculatedDistance !== null) {
+      return a.calculatedDistance - b.calculatedDistance;
+    }
+    if (sortBy === 'requests') {
+      return (b.request_count || 0) - (a.request_count || 0);
+    }
+    if (sortBy === 'name') {
+      return a.name.localeCompare(b.name);
+    }
+    return 0;
+  });
+
+  const handleMarkerClick = (restaurant: Restaurant) => {
+    setSelectedRestaurantId(restaurant.id);
+    setViewMode('map');
   };
 
   return (
@@ -145,7 +188,7 @@ export default function RestaurantsPage() {
         </div>
 
         {/* 카테고리 필터 */}
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-6">
           <h3 className="font-bold text-gray-800 mb-4">카테고리 필터</h3>
           <div className="flex flex-wrap gap-3">
             {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
@@ -172,6 +215,86 @@ export default function RestaurantsPage() {
           )}
         </div>
 
+        {/* 뷰 모드 및 정렬 컨트롤 */}
+        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            {/* 뷰 모드 전환 */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                📋 리스트
+              </button>
+              <button
+                onClick={() => setViewMode('map')}
+                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                  viewMode === 'map'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                🗺️ 지도
+              </button>
+            </div>
+
+            {/* 정렬 옵션 */}
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600">정렬:</span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as 'name' | 'distance' | 'requests')}
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value="requests">인기순</option>
+                <option value="name">이름순</option>
+                <option value="distance" disabled={!coords}>
+                  거리순 {!coords && '(위치 필요)'}
+                </option>
+              </select>
+
+              {/* 내 위치 버튼 */}
+              {!coords && (
+                <button
+                  onClick={getCurrentPosition}
+                  disabled={geoLoading}
+                  className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors disabled:opacity-50"
+                >
+                  {geoLoading ? '위치 확인 중...' : '📍 내 위치'}
+                </button>
+              )}
+              {coords && (
+                <span className="text-sm text-green-600">✓ 위치 활성화</span>
+              )}
+            </div>
+          </div>
+
+          {geoError && (
+            <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {geoError}
+            </div>
+          )}
+        </div>
+
+        {/* 지도 뷰 */}
+        {viewMode === 'map' && !loading && restaurants.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-lg p-4 mb-8">
+            <div className="h-[600px] rounded-lg overflow-hidden">
+              <RestaurantMap
+                restaurants={sortedRestaurants}
+                center={coords ? { lat: coords.latitude, lng: coords.longitude } : undefined}
+                zoom={coords ? 4 : 5}
+                onMarkerClick={handleMarkerClick}
+                selectedRestaurantId={selectedRestaurantId}
+              />
+            </div>
+          </div>
+        )}
+
         {/* 식당 리스트 */}
         {loading ? (
           <div className="text-center py-12">
@@ -196,9 +319,9 @@ export default function RestaurantsPage() {
               식당 검증 요청하기
             </Link>
           </div>
-        ) : (
+        ) : viewMode === 'list' ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {restaurants.map((restaurant) => (
+            {sortedRestaurants.map((restaurant) => (
               <Link
                 key={restaurant.id}
                 href={`/restaurants/${restaurant.id}`}
@@ -246,17 +369,22 @@ export default function RestaurantsPage() {
                   </div>
                 )}
 
-                {/* 요청 수 */}
-                <div className="text-xs text-gray-500">
-                  검증 요청: {restaurant.request_count}명
+                {/* 요청 수 및 거리 */}
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>검증 요청: {restaurant.request_count}명</span>
+                  {restaurant.calculatedDistance !== null && (
+                    <span className="text-blue-600 font-medium">
+                      📍 {restaurant.calculatedDistance}km
+                    </span>
+                  )}
                 </div>
               </Link>
             ))}
           </div>
-        )}
+        ) : null}
 
         {/* 하단 CTA */}
-        {restaurants.length > 0 && (
+        {restaurants.length > 0 && viewMode === 'list' && (
           <div className="mt-12 text-center">
             <p className="text-gray-600 mb-4">원하는 식당이 없나요?</p>
             <Link

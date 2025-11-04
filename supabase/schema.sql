@@ -5,9 +5,21 @@
 -- 1. 식당 테이블
 CREATE TABLE IF NOT EXISTS restaurants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- 크롤링 데이터에서 가져온 외부 ID (OSM ID 등)
+  external_id TEXT UNIQUE, -- OpenStreetMap node ID 등
+
+  -- 기본 정보
   name TEXT NOT NULL,
   address TEXT NOT NULL,
+  road_address TEXT, -- 도로명 주소
   category TEXT[] DEFAULT '{}', -- ['vegan', 'low-sodium', 'gluten-free', 'keto', 'organic']
+  original_category TEXT, -- 크롤링 원본 카테고리 (예: "식당", "카페", "햄버거")
+
+  -- 위치 정보
+  latitude DECIMAL(10, 7),
+  longitude DECIMAL(10, 7),
+  distance INTEGER, -- 특정 지점으로부터의 거리 (미터)
 
   -- 검증 상태
   verification_status TEXT DEFAULT 'pending', -- 'pending' | 'verified' | 'rejected'
@@ -17,6 +29,9 @@ CREATE TABLE IF NOT EXISTS restaurants (
   -- 메타 정보
   phone TEXT,
   website TEXT,
+  place_url TEXT, -- OpenStreetMap 등의 외부 링크
+  cuisine TEXT, -- 요리 종류 (예: "족발", "burger", "coffee_shop")
+  opening_hours TEXT, -- 영업 시간
   images TEXT[] DEFAULT '{}', -- 식당 이미지 URL 배열
 
   -- 투표/요청 수 (비정규화 - 성능 최적화)
@@ -49,6 +64,12 @@ CREATE INDEX IF NOT EXISTS idx_restaurants_request_count
 
 CREATE INDEX IF NOT EXISTS idx_restaurants_category
   ON restaurants USING GIN(category);
+
+CREATE INDEX IF NOT EXISTS idx_restaurants_location
+  ON restaurants(latitude, longitude);
+
+CREATE INDEX IF NOT EXISTS idx_restaurants_external_id
+  ON restaurants(external_id);
 
 CREATE INDEX IF NOT EXISTS idx_requests_restaurant
   ON verification_requests(restaurant_id);
